@@ -1,0 +1,20 @@
+[project]
+name = "az-quotas-compare"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Your Name",email = "you@example.com"}
+]
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "azure-identity (>=1.23.0,<2.0.0)",
+    "azure-mgmt-quota (>=2.0.0,<3.0.0)",
+    "azure-mgmt-resource (>=24.0.0,<25.0.0)",
+    "azure-mgmt-subscription (>=3.1.1,<4.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

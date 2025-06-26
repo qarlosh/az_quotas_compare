@@ -1,0 +1,9 @@
+Microsoft.Network
+Microsoft.Storage
+Microsoft.HDInsight
+Microsoft.Compute
+Microsoft.Search
+Microsoft.MachineLearningServices
+Microsoft.AVS
+Microsoft.App
+Microsoft.NetApp

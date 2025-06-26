@@ -1,0 +1,6 @@
+australiaeast
+centralus
+eastasia
+japaneast
+westeurope
+westus2
