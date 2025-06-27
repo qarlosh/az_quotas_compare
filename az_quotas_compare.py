@@ -1,5 +1,8 @@
 import json
-from azure.identity import DefaultAzureCredential, ClientSecretCredential
+from azure.identity import (
+    ClientSecretCredential,
+    InteractiveBrowserCredential,
+)
 from azure.mgmt.quota import QuotaMgmtClient
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.subscription import SubscriptionClient
@@ -8,10 +11,10 @@ import argparse
 
 DESCRIPTION = """Retrieve and compare quota limits for 2 subscriptions.
 
-If no authentication arguments are provided, it uses the default Azure authentication, which will use the credentials from the environment for both subscriptions.
+If no authentication arguments are provided, it uses the interactive browser authentication. Yo need to provide the following argument:
+- Tenant ID (or "directory" ID): Same value that EaaS gets from AZURE_TENANT_ID environment variable.
 
 For more explicit authentication, provide the rest of the arguments to use Client Secret authentication. You must provide them for both subscriptions:
-- Tenant ID (or "directory" ID): Same value that EaaS gets from AZURE_TENANT_ID environment variable.
 - Client ID: Same value that EaaS gets from ACI_CLIENT_ID environment variable.
 - Client Secret: Same value that EaaS gets from ACI_SECRET environment variable.
 """
@@ -21,19 +24,21 @@ def main():
     if cs := config['client_secret_auth']:
         credentials = (
             ClientSecretCredential(
-                cs["tenant_id_1"],
+                config["tenant_id_1"],
                 cs["client_id_1"],
                 cs["client_secret_1"],
             ),
             ClientSecretCredential(
-                cs["tenant_id_2"],
+                config["tenant_id_2"],
                 cs["client_id_2"],
                 cs["client_secret_2"],
             ),
         )
     else:
-        _credential = DefaultAzureCredential()
-        credentials = (_credential, _credential)
+        credentials = (
+            InteractiveBrowserCredential(tenant_id=config["tenant_id_1"]),
+            InteractiveBrowserCredential(tenant_id=config["tenant_id_2"]),
+        )
 
     providers = get_resource_providers_from_file()
     # providers = get_resource_providers(credentials[0], config['subscription_id_1'])
@@ -60,11 +65,13 @@ def parse_args():
     parser.add_argument("--subscription-id-2", required=True, help="Subscription ID #2")
     parser.add_argument(
         "--tenant-id-1",
-        help="Tenant ID for subscription #1 (for client secret authentication)",
+        required=True,
+        help="Tenant ID for subscription #1",
     )
     parser.add_argument(
         "--tenant-id-2",
-        help="Tenant ID for subscription #2 (for client secret authentication)",
+        required=True,
+        help="Tenant ID for subscription #2",
     )
     parser.add_argument(
         "--client-id-1",
@@ -84,8 +91,6 @@ def parse_args():
     )
     args = parser.parse_args()
     client_secret_auth_args = {
-        'tenant_id_1': args.tenant_id_1,
-        'tenant_id_2': args.tenant_id_2,
         'client_id_1': args.client_id_1,
         'client_id_2': args.client_id_2,
         'client_secret_1': args.client_secret_1,
@@ -93,12 +98,14 @@ def parse_args():
     }
     if not all(client_secret_auth_args.values()) and any(client_secret_auth_args.values()):
         parser.error(
-            "To use client secret authentication you must provide all the related arguments."
+            "To use client secret authentication you must provide all the arguments."
         )
     if not any(client_secret_auth_args.values()):
         # do not use client secret authentication
         client_secret_auth_args = None
     return {
+        'tenant_id_1': args.tenant_id_1,
+        'tenant_id_2': args.tenant_id_2,
         "subscription_id_1": args.subscription_id_1,
         "subscription_id_2": args.subscription_id_2,
         "client_secret_auth": client_secret_auth_args,
@@ -186,7 +193,10 @@ def compare_and_show_results(quota_limits, subscription_id_1, subscription_id_2)
         f.write(json.dumps(quota_limits[subscription_id_1], indent=4))
     with open(f"limits_{subscription_id_2}.json", "w") as f:
         f.write(json.dumps(quota_limits[subscription_id_2], indent=4))
-    compare_dicts(quota_limits[subscription_id_1] , quota_limits[subscription_id_2])
+    diffs = compare_dicts(quota_limits[subscription_id_1] , quota_limits[subscription_id_2])
+    print("\nDIFFERENCES FOUND:")
+    for d in diffs:
+        print(d)
 
 
 def compare_dicts(d1, d2, path=""):
@@ -195,15 +205,12 @@ def compare_dicts(d1, d2, path=""):
     keys_d1 = set(d1.keys())
     keys_d2 = set(d2.keys())
 
-    # Claves que faltan en d2
     for key in keys_d1 - keys_d2:
-        diffs.append(f"{path}/{key} está en d1 pero no en d2")
+        diffs.append(f"{path}/{key}  IS IN #1 BUT NOT IN #2")
 
-    # Claves que faltan en d1
     for key in keys_d2 - keys_d1:
-        diffs.append(f"{path}/{key} está en d2 pero no en d1")
+        diffs.append(f"{path}/{key}  IS IN #2 BUT NOT IN #1")
 
-    # Claves comunes
     for key in keys_d1 & keys_d2:
         val1 = d1[key]
         val2 = d2[key]
@@ -212,7 +219,7 @@ def compare_dicts(d1, d2, path=""):
         if isinstance(val1, dict) and isinstance(val2, dict):
             diffs.extend(compare_dicts(val1, val2, new_path))
         elif val1 != val2:
-            diffs.append(f"{new_path} tiene valores diferentes: d1={val1}, d2={val2}")
+            diffs.append(f"{new_path:<90}{val1:>6} | {val2:>6}")
 
     return diffs
 
